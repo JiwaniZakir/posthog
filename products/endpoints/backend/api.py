@@ -2146,7 +2146,7 @@ class EndpointViewSet(TeamAndOrgViewSetMixin, PydanticModelMixin, viewsets.Model
                 range_pairs = list(seen_columns.values())
 
                 # Extract aggregate info from the original query
-                from products.endpoints.backend.materialization import REAGGREGATABLE_FUNCTIONS, _extract_aggregate_name
+                from products.endpoints.backend.materialization import _extract_aggregate_name, get_reaggregation
 
                 query_str = hogql_query.get("query", "")
                 if query_str:
@@ -2159,7 +2159,8 @@ class EndpointViewSet(TeamAndOrgViewSetMixin, PydanticModelMixin, viewsets.Model
                             for expr in parsed.select:
                                 agg_name = _extract_aggregate_name(expr)
                                 if agg_name:
-                                    reagg = REAGGREGATABLE_FUNCTIONS.get(agg_name.lower())
+                                    reagg_info = get_reaggregation(agg_name)
+                                    reagg = reagg_info.reaggregate_fn if reagg_info else None
                                     if isinstance(expr, ast.Alias):
                                         label = expr.alias
                                     else:

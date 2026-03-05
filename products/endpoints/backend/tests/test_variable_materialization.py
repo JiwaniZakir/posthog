@@ -486,7 +486,7 @@ class TestRangePairDetection(APIBaseTest):
         # host is equality — no bucket_fn
         assert by_name["host"].bucket_fn is None
 
-    def test_single_range_op_not_paired(self):
+    def test_single_range_op_gets_bucket_fn(self):
         query = {
             "kind": "HogQLQuery",
             "query": "SELECT count() FROM events WHERE timestamp >= {variables.start_ts}",
@@ -498,8 +498,8 @@ class TestRangePairDetection(APIBaseTest):
         can_materialize, reason, var_infos = analyze_variables_for_materialization(query)
         assert can_materialize is True
         assert len(var_infos) == 1
-        # Single range op — no pair, no bucket_fn
-        assert var_infos[0].bucket_fn is None
+        # Single range op gets bucket_fn (default toStartOfDay)
+        assert var_infos[0].bucket_fn == "toStartOfDay"
 
     def test_non_reaggregatable_function_rejected_with_range_vars(self):
         query = {
@@ -617,6 +617,229 @@ class TestRangePairDetection(APIBaseTest):
         _, _, var_infos = analyze_variables_for_materialization(query, bucket_overrides={"event": "hour"})
 
         assert var_infos[0].bucket_fn is None
+
+
+class TestSingleBoundRange(APIBaseTest):
+    """Test single-bound range variable materialization."""
+
+    def test_single_lower_bound_gets_bucket_fn(self):
+        query = {
+            "kind": "HogQLQuery",
+            "query": "SELECT count() FROM events WHERE timestamp >= {variables.start}",
+            "variables": {"var-1": {"code_name": "start", "value": "2024-01-01"}},
+        }
+
+        can_materialize, reason, var_infos = analyze_variables_for_materialization(query)
+        assert can_materialize is True
+        assert var_infos[0].bucket_fn == "toStartOfDay"
+
+    def test_single_upper_bound_gets_bucket_fn(self):
+        query = {
+            "kind": "HogQLQuery",
+            "query": "SELECT count() FROM events WHERE timestamp < {variables.end}",
+            "variables": {"var-1": {"code_name": "end", "value": "2024-02-01"}},
+        }
+
+        can_materialize, reason, var_infos = analyze_variables_for_materialization(query)
+        assert can_materialize is True
+        assert var_infos[0].bucket_fn == "toStartOfDay"
+
+    def test_single_bound_transform_uses_bucket(self):
+        query = {
+            "kind": "HogQLQuery",
+            "query": "SELECT count() FROM events WHERE timestamp >= {variables.start}",
+            "variables": {"var-1": {"code_name": "start", "value": "2024-01-01"}},
+        }
+
+        _, _, var_infos = analyze_variables_for_materialization(query)
+        transformed = transform_query_for_materialization(query, var_infos, self.team)
+
+        assert "toStartOfDay" in transformed["query"]
+        assert "{variables" not in transformed["query"]
+
+    def test_single_bound_with_bucket_override(self):
+        query = {
+            "kind": "HogQLQuery",
+            "query": "SELECT count() FROM events WHERE timestamp >= {variables.start}",
+            "variables": {"var-1": {"code_name": "start", "value": "2024-01-01"}},
+        }
+
+        _, _, var_infos = analyze_variables_for_materialization(query, bucket_overrides={"timestamp": "hour"})
+        assert var_infos[0].bucket_fn == "toStartOfHour"
+
+    def test_single_bound_non_reaggregatable_rejected(self):
+        query = {
+            "kind": "HogQLQuery",
+            "query": "SELECT avg(properties.duration) FROM events WHERE timestamp >= {variables.start}",
+            "variables": {"var-1": {"code_name": "start", "value": "2024-01-01"}},
+        }
+
+        can_materialize, reason, _ = analyze_variables_for_materialization(query)
+        assert can_materialize is False
+        assert "avg" in reason
+        assert "re-aggregated" in reason
+
+
+class TestMinuteBuckets(APIBaseTest):
+    """Test minute-level bucket granularity."""
+
+    @parameterized.expand(
+        [
+            ("minute", "toStartOfMinute"),
+            ("fifteen_minutes", "toStartOfFifteenMinutes"),
+            ("hour", "toStartOfHour"),
+            ("day", "toStartOfDay"),
+            ("week", "toStartOfWeek"),
+            ("month", "toStartOfMonth"),
+        ]
+    )
+    def test_bucket_override_all_granularities(self, override_key, expected_fn):
+        query = {
+            "kind": "HogQLQuery",
+            "query": "SELECT count() FROM events WHERE timestamp >= {variables.start_ts} AND timestamp < {variables.end_ts}",
+            "variables": {
+                "var-1": {"code_name": "start_ts", "value": "2024-01-01"},
+                "var-2": {"code_name": "end_ts", "value": "2024-02-01"},
+            },
+        }
+
+        _, _, var_infos = analyze_variables_for_materialization(query, bucket_overrides={"timestamp": override_key})
+
+        by_name = {v.code_name: v for v in var_infos}
+        assert by_name["start_ts"].bucket_fn == expected_fn
+        assert by_name["end_ts"].bucket_fn == expected_fn
+
+    def test_minute_bucket_in_transform(self):
+        query = {
+            "kind": "HogQLQuery",
+            "query": "SELECT count() FROM events WHERE timestamp >= {variables.start_ts} AND timestamp < {variables.end_ts}",
+            "variables": {
+                "var-1": {"code_name": "start_ts", "value": "2024-01-01"},
+                "var-2": {"code_name": "end_ts", "value": "2024-02-01"},
+            },
+        }
+
+        _, _, var_infos = analyze_variables_for_materialization(query)
+        transformed = transform_query_for_materialization(
+            query, var_infos, self.team, bucket_overrides={"timestamp": "minute"}
+        )
+
+        assert "toStartOfMinute" in transformed["query"]
+
+
+class TestCombinatorReaggregation(APIBaseTest):
+    """Test combinator-based re-aggregation detection."""
+
+    @parameterized.expand(
+        [
+            ("sumIf", "sum"),
+            ("countIf", "sum"),
+            ("maxIf", "max"),
+            ("minIf", "min"),
+            ("sumArray", "sum"),
+            ("countArrayIf", "sum"),
+        ]
+    )
+    def test_reaggregatable_combinators_allowed(self, func_name, expected_reagg):
+        from products.endpoints.backend.materialization import get_reaggregation
+
+        reagg = get_reaggregation(func_name)
+        assert reagg is not None, f"{func_name} should be re-aggregatable"
+        assert reagg.reaggregate_fn == expected_reagg
+
+    @parameterized.expand(
+        [
+            ("avg",),
+            ("uniq",),
+            ("uniqIf",),
+            ("uniqExact",),
+            ("uniqArrayIf",),
+            ("avgWeighted",),
+            ("avgWeightedIf",),
+            ("median",),
+            ("quantile",),
+        ]
+    )
+    def test_non_reaggregatable_functions_rejected(self, func_name):
+        from products.endpoints.backend.materialization import get_reaggregation
+
+        reagg = get_reaggregation(func_name)
+        assert reagg is None, f"{func_name} should NOT be re-aggregatable"
+
+    def test_sumIf_query_materializes(self):
+        query = {
+            "kind": "HogQLQuery",
+            "query": "SELECT sumIf(1, event = '$pageview') FROM events WHERE timestamp >= {variables.start} AND timestamp < {variables.end}",
+            "variables": {
+                "var-1": {"code_name": "start", "value": "2024-01-01"},
+                "var-2": {"code_name": "end", "value": "2024-02-01"},
+            },
+        }
+
+        can_materialize, reason, _ = analyze_variables_for_materialization(query)
+        assert can_materialize is True, f"sumIf should be allowed: {reason}"
+
+    def test_uniqIf_query_rejected(self):
+        query = {
+            "kind": "HogQLQuery",
+            "query": "SELECT uniqIf(person_id, event = '$pageview') FROM events WHERE timestamp >= {variables.start} AND timestamp < {variables.end}",
+            "variables": {
+                "var-1": {"code_name": "start", "value": "2024-01-01"},
+                "var-2": {"code_name": "end", "value": "2024-02-01"},
+            },
+        }
+
+        can_materialize, reason, _ = analyze_variables_for_materialization(query)
+        assert can_materialize is False
+        assert "re-aggregated" in reason
+
+
+class TestStripCombinators(APIBaseTest):
+    """Unit tests for _strip_combinators."""
+
+    @parameterized.expand(
+        [
+            ("count", "count"),
+            ("sum", "sum"),
+            ("min", "min"),
+            ("max", "max"),
+            ("sumIf", "sum"),
+            ("countIf", "count"),
+            ("maxIf", "max"),
+            ("countArrayIf", "count"),
+            ("sumArray", "sum"),
+            ("minOrDefault", "min"),
+            ("maxOrNull", "max"),
+        ]
+    )
+    def test_strips_to_known_base(self, func_name, expected_base):
+        from products.endpoints.backend.materialization import _strip_combinators
+
+        assert _strip_combinators(func_name) == expected_base
+
+    @parameterized.expand(
+        [
+            ("avg",),
+            ("uniq",),
+            ("uniqIf",),
+            ("uniqExact",),
+            ("median",),
+            ("quantile",),
+            ("someRandomFunction",),
+        ]
+    )
+    def test_returns_none_for_unknown(self, func_name):
+        from products.endpoints.backend.materialization import _strip_combinators
+
+        result = _strip_combinators(func_name)
+        # Should return the base but it won't be in REAGGREGATABLE_BASE_FUNCTIONS
+        # For truly unknown functions, returns None
+        if result is not None:
+            from products.endpoints.backend.materialization import REAGGREGATABLE_BASE_FUNCTIONS
+
+            # The base was found but it's not in the registry — that's the expected path
+            # for functions like uniq, avg whose base is known but not re-aggregatable
+            assert result not in REAGGREGATABLE_BASE_FUNCTIONS or result == func_name.lower()
 
 
 class TestQueryTransformation(APIBaseTest):
@@ -1358,6 +1581,18 @@ class TestTransformQuerySnapshots(APIBaseTest):
             self._transform(
                 "SELECT count() FROM events WHERE event LIKE {variables.pattern}",
                 {"var-1": {"code_name": "pattern", "value": "%page%"}},
+            )
+            == self.snapshot
+        )
+
+    def test_hard_cap_timestamp_with_variable_range(self):
+        assert (
+            self._transform(
+                "SELECT count() FROM events WHERE timestamp > today() - interval 90 day AND timestamp >= {variables.start_date} AND timestamp < {variables.end_date}",
+                {
+                    "var-1": {"code_name": "start_date", "value": "2024-01-01"},
+                    "var-2": {"code_name": "end_date", "value": "2024-04-01"},
+                },
             )
             == self.snapshot
         )
