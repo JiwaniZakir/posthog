@@ -3870,6 +3870,7 @@ class SharingConfigurationSettings(BaseModel):
     noHeader: bool | None = None
     showInspector: bool | None = None
     whitelabel: bool | None = None
+    allowAutoRefresh: bool | None = None
 
 
 class SimilarIssue(BaseModel):
