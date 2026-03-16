@@ -133,6 +133,9 @@ func (p *Process) Start(send func(tea.Msg)) error {
 
 	cmd := exec.Command("bash", "-c", p.Cfg.Shell)
 	cmd.Env = env
+	// Give child its own process group so Stop() can kill the entire tree,
+	// preventing zombie tsx/node/vite processes when phrocs exits.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
@@ -300,12 +303,14 @@ func (p *Process) readLoop(r io.Reader, send func(tea.Msg)) {
 	}
 }
 
-// Sends SIGTERM to the process and marks it as stopped
+// Sends SIGTERM to the process group and marks it as stopped.
+// Killing the process group (negative PID) ensures all descendants
+// (bash → tsx watch → node, etc.) are terminated, not just the shell.
 func (p *Process) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.cmd != nil && p.cmd.Process != nil {
-		_ = p.cmd.Process.Signal(syscall.SIGTERM)
+		_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGTERM)
 	}
 	if p.ptmx != nil {
 		_ = p.ptmx.Close()
