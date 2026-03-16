@@ -9,8 +9,6 @@ handled by Celery tasks dispatched from @receiver handlers in
 posthog/models/remote_config.py.
 """
 
-from django.db import transaction
-
 import structlog
 
 from posthog.exceptions_capture import capture_exception
@@ -73,6 +71,9 @@ def update_team_authentication_cache(instance: Team, created: bool, **kwargs):
     """
     Invalidate specific token cache entries when Team auth fields change.
 
+    Called from a transaction.on_commit callback, so the DB transaction has
+    already committed and we can dispatch Celery tasks directly.
+
     On secret token rotation: the old secret_api_token becomes the new backup,
     and the old backup is discarded. We invalidate the discarded backup's hash.
 
@@ -94,7 +95,7 @@ def update_team_authentication_cache(instance: Team, created: bool, **kwargs):
         if old_backup and old_backup != instance.secret_api_token_backup:
             # The old backup was discarded during rotation — invalidate its cache entry
             old_backup_hash = hash_key_value(old_backup, mode="sha256")
-            transaction.on_commit(lambda: invalidate_secret_token_cache_task.delay(old_backup_hash))
+            invalidate_secret_token_cache_task.delay(old_backup_hash)
             logger.info("Scheduled invalidation for discarded backup token", team_id=instance.pk)
 
         if old_secret and old_secret != instance.secret_api_token:
@@ -102,7 +103,7 @@ def update_team_authentication_cache(instance: Team, created: bool, **kwargs):
             # so only invalidate it when it is not the current backup.
             if old_secret != instance.secret_api_token_backup:
                 old_secret_hash = hash_key_value(old_secret, mode="sha256")
-                transaction.on_commit(lambda: invalidate_secret_token_cache_task.delay(old_secret_hash))
+                invalidate_secret_token_cache_task.delay(old_secret_hash)
                 logger.info("Scheduled invalidation for old secret token", team_id=instance.pk)
 
     except Exception as e:
@@ -113,6 +114,9 @@ def update_team_authentication_cache(instance: Team, created: bool, **kwargs):
 def update_team_authentication_cache_on_delete(instance: Team, **kwargs):
     """Invalidate cached secret tokens when a team is deleted.
 
+    Called from a transaction.on_commit callback, so the DB transaction has
+    already committed and we can dispatch Celery tasks directly.
+
     Teams have at most two secret tokens (secret_api_token and its backup),
     so we hash and invalidate each directly via a Celery task with retries.
     """
@@ -122,13 +126,10 @@ def update_team_authentication_cache_on_delete(instance: Team, **kwargs):
 
         from posthog.tasks.team_access_cache_tasks import invalidate_secret_token_cache_task
 
-        def _schedule_invalidation(h: str) -> None:
-            transaction.on_commit(lambda: invalidate_secret_token_cache_task.delay(h))
-
         for token in (instance.secret_api_token, instance.secret_api_token_backup):
             if token:
                 token_hash = hash_key_value(token, mode="sha256")
-                _schedule_invalidation(token_hash)
+                invalidate_secret_token_cache_task.delay(token_hash)
 
         logger.info("Scheduled invalidation for deleted team tokens", team_id=instance.pk)
     except Exception as e:

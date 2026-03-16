@@ -236,13 +236,13 @@ pub async fn validate_personal_api_key_with_scopes_for_team(
 
             match row_result {
                 Some(row) => {
-                    let key_id: String = row.get("key_id");
-                    let user_id: i32 = row.get("user_id");
-                    let scoped_teams: Option<Vec<i32>> = row.try_get("scoped_teams").ok();
+                    let key_id: String = row.try_get("key_id")?;
+                    let user_id: i32 = row.try_get("user_id")?;
+                    let scoped_teams: Option<Vec<i32>> = row.try_get("scoped_teams")?;
                     let scoped_organizations: Option<Vec<String>> =
-                        row.try_get("scoped_organizations").ok();
-                    let scopes: Option<Vec<String>> = row.try_get("scopes").ok();
-                    let org_ids: Vec<String> = row.try_get("org_ids").unwrap_or_default();
+                        row.try_get("scoped_organizations")?;
+                    let scopes: Option<Vec<String>> = row.try_get("scopes")?;
+                    let org_ids: Vec<String> = row.try_get("org_ids")?;
 
                     Ok::<_, FlagError>(Some(TokenAuthData::Personal {
                         user_id,

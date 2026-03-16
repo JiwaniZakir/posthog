@@ -97,22 +97,21 @@ class TestCaptureOldSecretTokens(TestCase):
 
 
 class TestUpdateTeamAuthenticationCache(TestCase):
-    @patch("django.db.transaction.on_commit")
-    def test_skips_created_teams(self, mock_on_commit):
+    @patch("posthog.tasks.team_access_cache_tasks.invalidate_secret_token_cache_task")
+    def test_skips_created_teams(self, mock_task):
         instance = MagicMock(pk=1, api_token="phc_test")
         update_team_authentication_cache(instance, created=True)
-        mock_on_commit.assert_not_called()
+        mock_task.delay.assert_not_called()
 
-    @patch("django.db.transaction.on_commit")
-    def test_skips_teams_without_api_token(self, mock_on_commit):
+    @patch("posthog.tasks.team_access_cache_tasks.invalidate_secret_token_cache_task")
+    def test_skips_teams_without_api_token(self, mock_task):
         instance = MagicMock(pk=1, api_token="")
         update_team_authentication_cache(instance, created=False)
-        mock_on_commit.assert_not_called()
+        mock_task.delay.assert_not_called()
 
     @patch("posthog.tasks.team_access_cache_tasks.invalidate_secret_token_cache_task")
     @patch("posthog.storage.team_access_cache_signal_handlers.hash_key_value")
-    @patch("django.db.transaction.on_commit")
-    def test_invalidates_discarded_backup_on_rotation(self, mock_on_commit, mock_hash, mock_task):
+    def test_invalidates_discarded_backup_on_rotation(self, mock_hash, mock_task):
         mock_hash.return_value = "sha256$hashed_old_backup"
 
         instance = MagicMock(pk=1, api_token="phc_test")
@@ -125,15 +124,11 @@ class TestUpdateTeamAuthenticationCache(TestCase):
         update_team_authentication_cache(instance, created=False)
 
         mock_hash.assert_called_once_with("old_backup_value", mode="sha256")
-        mock_on_commit.assert_called_once()
-        # Execute the on_commit callback to verify it dispatches the Celery task
-        mock_on_commit.call_args[0][0]()
         mock_task.delay.assert_called_once_with("sha256$hashed_old_backup")
 
     @patch("posthog.tasks.team_access_cache_tasks.invalidate_secret_token_cache_task")
     @patch("posthog.storage.team_access_cache_signal_handlers.hash_key_value")
-    @patch("django.db.transaction.on_commit")
-    def test_invalidates_old_secret_on_direct_change(self, mock_on_commit, mock_hash, mock_task):
+    def test_invalidates_old_secret_on_direct_change(self, mock_hash, mock_task):
         mock_hash.return_value = "sha256$hashed_old_secret"
 
         instance = MagicMock(pk=1, api_token="phc_test")
@@ -146,12 +141,10 @@ class TestUpdateTeamAuthenticationCache(TestCase):
         update_team_authentication_cache(instance, created=False)
 
         mock_hash.assert_called_once_with("old_secret_value", mode="sha256")
-        mock_on_commit.assert_called_once()
-        mock_on_commit.call_args[0][0]()
         mock_task.delay.assert_called_once_with("sha256$hashed_old_secret")
 
-    @patch("django.db.transaction.on_commit")
-    def test_skips_old_secret_invalidation_when_it_becomes_backup(self, mock_on_commit):
+    @patch("posthog.tasks.team_access_cache_tasks.invalidate_secret_token_cache_task")
+    def test_skips_old_secret_invalidation_when_it_becomes_backup(self, mock_task):
         # During rotation: old primary -> new backup. The token is still valid,
         # so we must NOT invalidate it.
         instance = MagicMock(pk=1, api_token="phc_test")
@@ -163,12 +156,11 @@ class TestUpdateTeamAuthenticationCache(TestCase):
 
         update_team_authentication_cache(instance, created=False)
 
-        mock_on_commit.assert_not_called()
+        mock_task.delay.assert_not_called()
 
     @patch("posthog.tasks.team_access_cache_tasks.invalidate_secret_token_cache_task")
     @patch("posthog.storage.team_access_cache_signal_handlers.hash_key_value")
-    @patch("django.db.transaction.on_commit")
-    def test_full_rotation_invalidates_only_discarded_backup(self, mock_on_commit, mock_hash, mock_task):
+    def test_full_rotation_invalidates_only_discarded_backup(self, mock_hash, mock_task):
         # Full rotation: new primary is set, old primary becomes backup, old backup is discarded.
         # Only the discarded backup should be invalidated; the old primary (now backup) stays valid.
         mock_hash.return_value = "sha256$hashed_old_backup"
@@ -183,8 +175,6 @@ class TestUpdateTeamAuthenticationCache(TestCase):
         update_team_authentication_cache(instance, created=False)
 
         mock_hash.assert_called_once_with("original_backup", mode="sha256")
-        mock_on_commit.assert_called_once()
-        mock_on_commit.call_args[0][0]()
         mock_task.delay.assert_called_once_with("sha256$hashed_old_backup")
 
     @patch("posthog.storage.team_access_cache_signal_handlers.capture_exception")
@@ -202,8 +192,8 @@ class TestUpdateTeamAuthenticationCache(TestCase):
 
         mock_capture.assert_called_once()
 
-    @patch("django.db.transaction.on_commit")
-    def test_no_invalidation_when_tokens_unchanged(self, mock_on_commit):
+    @patch("posthog.tasks.team_access_cache_tasks.invalidate_secret_token_cache_task")
+    def test_no_invalidation_when_tokens_unchanged(self, mock_task):
         instance = MagicMock(pk=1, api_token="phc_test")
 
         instance._old_secret_api_token = "same_value"
@@ -213,12 +203,11 @@ class TestUpdateTeamAuthenticationCache(TestCase):
 
         update_team_authentication_cache(instance, created=False)
 
-        mock_on_commit.assert_not_called()
+        mock_task.delay.assert_not_called()
 
     @patch("posthog.tasks.team_access_cache_tasks.invalidate_secret_token_cache_task")
     @patch("posthog.storage.team_access_cache_signal_handlers.hash_key_value")
-    @patch("django.db.transaction.on_commit")
-    def test_skips_old_secret_invalidation_when_old_equals_new_secret(self, mock_on_commit, mock_hash, mock_task):
+    def test_skips_old_secret_invalidation_when_old_equals_new_secret(self, mock_hash, mock_task):
         # old_secret == new secret_api_token but backup changed —
         # only backup should be invalidated, not the unchanged primary
         mock_hash.return_value = "sha256$hashed_old_backup"
@@ -233,42 +222,32 @@ class TestUpdateTeamAuthenticationCache(TestCase):
         update_team_authentication_cache(instance, created=False)
 
         mock_hash.assert_called_once_with("old_backup", mode="sha256")
-        mock_on_commit.assert_called_once()
-        mock_on_commit.call_args[0][0]()
         mock_task.delay.assert_called_once_with("sha256$hashed_old_backup")
 
 
 class TestUpdateTeamAuthenticationCacheOnDelete(TestCase):
     @patch("posthog.tasks.team_access_cache_tasks.invalidate_secret_token_cache_task")
     @patch("posthog.storage.team_access_cache_signal_handlers.hash_key_value")
-    @patch("django.db.transaction.on_commit")
-    def test_invalidates_both_secret_tokens(self, mock_on_commit, mock_hash, mock_task):
+    def test_invalidates_both_secret_tokens(self, mock_hash, mock_task):
         mock_hash.side_effect = lambda v, mode="sha256": f"sha256${v}_hashed"
         instance = MagicMock(pk=42, secret_api_token="phs_main", secret_api_token_backup="phs_backup")
         update_team_authentication_cache_on_delete(instance)
-        assert mock_on_commit.call_count == 2
-        # Execute both on_commit callbacks
-        for call in mock_on_commit.call_args_list:
-            call[0][0]()
         assert mock_task.delay.call_count == 2
         mock_task.delay.assert_any_call("sha256$phs_main_hashed")
         mock_task.delay.assert_any_call("sha256$phs_backup_hashed")
 
-    @patch("django.db.transaction.on_commit")
-    def test_skips_instance_without_pk(self, mock_on_commit):
+    @patch("posthog.tasks.team_access_cache_tasks.invalidate_secret_token_cache_task")
+    def test_skips_instance_without_pk(self, mock_task):
         instance = MagicMock(pk=None)
         update_team_authentication_cache_on_delete(instance)
-        mock_on_commit.assert_not_called()
+        mock_task.delay.assert_not_called()
 
     @patch("posthog.tasks.team_access_cache_tasks.invalidate_secret_token_cache_task")
     @patch("posthog.storage.team_access_cache_signal_handlers.hash_key_value")
-    @patch("django.db.transaction.on_commit")
-    def test_skips_empty_tokens(self, mock_on_commit, mock_hash, mock_task):
+    def test_skips_empty_tokens(self, mock_hash, mock_task):
         instance = MagicMock(pk=42, secret_api_token="phs_main", secret_api_token_backup=None)
         mock_hash.return_value = "sha256$hashed"
         update_team_authentication_cache_on_delete(instance)
-        mock_on_commit.assert_called_once()
-        mock_on_commit.call_args[0][0]()
         mock_task.delay.assert_called_once()
 
     @patch("posthog.storage.team_access_cache_signal_handlers.capture_exception")
