@@ -160,15 +160,10 @@ def _compute_flag_dependencies(flags_data: list[dict[str, Any]]) -> dict[str, An
                     next_queue.append(dependent_id)
         queue = sorted(next_queue)
 
-    # Flags still with in_degree > 0 are in cycles. Mark them and propagate
-    # has_missing to any already-processed flag that depends on a cycled flag.
+    # Flags still with in_degree > 0 are in cycles.
     cycled_flags = {fid for fid, deg in in_degree.items() if deg > 0}
     for fid in cycled_flags:
         has_missing[fid] = True
-    if cycled_flags:
-        for fid, td in transitive_deps.items():
-            if not has_missing[fid] and td & cycled_flags:
-                has_missing[fid] = True
 
     return {
         "dependency_stages": dependency_stages,

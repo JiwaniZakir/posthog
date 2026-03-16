@@ -2435,6 +2435,8 @@ class TestComputeFlagDependencies:
 
         assert ctx["dependency_stages"] == []
         assert ctx["flags_with_missing_deps"] == [1, 2, 3, 4]
+        # Cycled flags get empty transitive deps (never peeled by Kahn's)
+        assert ctx["transitive_deps"] == {"1": [], "2": [], "3": [], "4": []}
 
     def test_empty_flags_list(self):
         ctx = _compute_flag_dependencies([])

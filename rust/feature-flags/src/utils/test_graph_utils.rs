@@ -1759,51 +1759,14 @@ mod seed_set_closure_tests {
 
 #[cfg(test)]
 mod precomputed_dependency_graph_tests {
-    use crate::flags::flag_models::{FeatureFlag, FeatureFlagList, FlagFilters, FlagPropertyGroup};
+    use crate::flags::flag_models::{FeatureFlag, FeatureFlagList};
     use crate::utils::graph_utils::{
         build_dependency_graph, filter_graph_by_keys, PrecomputedDependencyGraph,
     };
-    use crate::utils::test_utils::create_test_flag;
     use std::collections::HashSet;
 
     fn create_flag(id: i32, key: &str, dependencies: HashSet<i32>, active: bool) -> FeatureFlag {
-        let mut filters = FlagFilters {
-            groups: vec![FlagPropertyGroup {
-                properties: Some(vec![]),
-                rollout_percentage: Some(100.0),
-                variant: None,
-            }],
-            multivariate: None,
-            aggregation_group_type_index: None,
-            payloads: None,
-            super_groups: None,
-            holdout_groups: None,
-            holdout: None,
-        };
-
-        for dep_id in dependencies {
-            filters.groups[0].properties.as_mut().unwrap().push(
-                crate::properties::property_models::PropertyFilter {
-                    key: dep_id.to_string(),
-                    value: Some(serde_json::json!(true)),
-                    operator: Some(crate::properties::property_models::OperatorType::Exact),
-                    prop_type: crate::properties::property_models::PropertyType::Flag,
-                    group_type_index: None,
-                    negation: None,
-                },
-            );
-        }
-
-        create_test_flag(
-            Some(id),
-            Some(1),
-            None,
-            Some(key.to_string()),
-            Some(filters),
-            None,
-            Some(active),
-            None,
-        )
+        super::create_flag_with_deps(id, key, dependencies, active, false)
     }
 
     /// Extracts sorted flag keys from evaluation stages for deterministic comparison.
@@ -2872,6 +2835,49 @@ mod precomputed_dependency_graph_tests {
         };
 
         let precomputed = PrecomputedDependencyGraph::build(&feature_flags, 1).unwrap();
+
+        assert!(!precomputed.has_cycle_errors);
+        assert_eq!(precomputed.error_count, 0);
+    }
+
+    #[test]
+    fn test_runtime_filtered_active_flag_excluded_from_precomputed_stages() {
+        use crate::flags::flag_models::EvaluationMetadata;
+        use std::collections::HashMap;
+
+        // Django includes all 3 active flags in dependency_stages.
+        // At request time, flag_b(2) is runtime-filtered (e.g., tag mismatch).
+        let feature_flags = FeatureFlagList {
+            flags: vec![
+                create_flag(1, "flag_a", HashSet::from([2]), true),
+                create_flag(2, "flag_b", HashSet::new(), true),
+                create_flag(3, "flag_c", HashSet::new(), true),
+            ],
+            filtered_out_flag_ids: HashSet::from([2]),
+            evaluation_metadata: Some(EvaluationMetadata {
+                dependency_stages: vec![vec![2, 3], vec![1]],
+                flags_with_missing_deps: vec![],
+                transitive_deps: HashMap::from([
+                    (1, HashSet::from([2])),
+                    (2, HashSet::new()),
+                    (3, HashSet::new()),
+                ]),
+            }),
+        };
+
+        let precomputed = PrecomputedDependencyGraph::build(&feature_flags, 1).unwrap();
+
+        let all_ids: HashSet<i32> = precomputed
+            .evaluation_stages
+            .iter()
+            .flat_map(|s| s.iter().map(|f| f.id))
+            .collect();
+        assert!(all_ids.contains(&1));
+        assert!(
+            !all_ids.contains(&2),
+            "Runtime-filtered flag should be excluded"
+        );
+        assert!(all_ids.contains(&3));
 
         assert!(!precomputed.has_cycle_errors);
         assert_eq!(precomputed.error_count, 0);

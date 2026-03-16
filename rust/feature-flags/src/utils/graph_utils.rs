@@ -786,7 +786,9 @@ impl PrecomputedDependencyGraph {
 
         let transitive_deps = ctx.transitive_deps.clone();
 
-        // Cycle detection: flags not in any stage
+        // Cycle detection: every non-filtered flag must appear in exactly one
+        // dependency_stage unless it's a cycle participant (in_degree > 0 after
+        // Kahn's). Django's Kahn's algorithm guarantees this invariant.
         let flags_in_stages: HashSet<i32> = evaluation_stages
             .iter()
             .flat_map(|s| s.iter().map(|f| f.id))
