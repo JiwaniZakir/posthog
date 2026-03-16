@@ -53,6 +53,8 @@ export const productScenes: Record<string, () => Promise<any>> = {
         import('../../products/customer_analytics/frontend/scenes/CustomerAnalyticsConfigurationScene/CustomerAnalyticsConfigurationScene'),
     CustomerJourneyBuilder: () =>
         import('../../products/customer_analytics/frontend/scenes/CustomerJourneyBuilderScene/CustomerJourneyBuilderScene'),
+    CustomerJourneyTemplates: () =>
+        import('../../products/customer_analytics/frontend/scenes/CustomerJourneyTemplatesScene/CustomerJourneyTemplatesScene'),
     DataOps: () => import('../../products/data_warehouse/DataWarehouseScene'),
     Models: () => import('../../frontend/src/scenes/models/ModelsScene'),
     NodeDetail: () => import('../../frontend/src/scenes/models/NodeDetailScene'),
@@ -108,8 +110,6 @@ export const productScenes: Record<string, () => Promise<any>> = {
     Workflows: () => import('../../products/workflows/frontend/WorkflowsScene'),
     Workflow: () => import('../../products/workflows/frontend/Workflows/WorkflowScene'),
     WorkflowsLibraryTemplate: () => import('../../products/workflows/frontend/TemplateLibrary/MessageTemplate'),
-    CustomerJourneyTemplates: () =>
-        import('../../products/customer_analytics/frontend/scenes/CustomerJourneyTemplatesScene/CustomerJourneyTemplatesScene'),
 }
 
 /** This const is auto-generated, as is the whole file */
@@ -124,6 +124,7 @@ export const productRoutes: Record<string, [string, string]> = {
     '/support/settings': ['SupportSettings', 'supportSettings'],
     '/customer_analytics/dashboard': ['CustomerAnalytics', 'customerAnalyticsDashboard'],
     '/customer_analytics/journeys/new': ['CustomerJourneyBuilder', 'customerJourneyBuilder'],
+    '/customer_analytics/journeys/templates': ['CustomerJourneyTemplates', 'customerJourneyTemplates'],
     '/customer_analytics/journeys': ['CustomerAnalytics', 'customerAnalyticsJourneys'],
     '/customer_analytics/configuration': ['CustomerAnalyticsConfiguration', 'customerAnalyticsConfiguration'],
     '/data-ops': ['DataOps', 'dataOps'],
@@ -196,7 +197,6 @@ export const productRoutes: Record<string, [string, string]> = {
         'WorkflowsLibraryTemplate',
         'workflowsLibraryTemplateFromMessage',
     ],
-    '/customer_analytics/journeys/templates': ['CustomerJourneyTemplates', 'customerJourneyTemplates'],
 }
 
 /** This const is auto-generated, as is the whole file */
@@ -281,6 +281,7 @@ export const productConfiguration: Record<string, any> = {
         name: 'Customer analytics configuration',
     },
     CustomerJourneyBuilder: { projectBased: true, name: 'New journey' },
+    CustomerJourneyTemplates: { projectBased: true, name: 'New journey' },
     DataOps: {
         name: 'Data ops',
         projectBased: true,
@@ -543,7 +544,6 @@ export const productConfiguration: Record<string, any> = {
     },
     Workflow: { name: 'Workflows', iconType: 'workflows', projectBased: true },
     WorkflowsLibraryTemplate: { name: 'Workflows', iconType: 'workflows', projectBased: true },
-    CustomerJourneyTemplates: { projectBased: true, name: 'New journey' },
 }
 
 /** This const is auto-generated, as is the whole file */
@@ -568,6 +568,7 @@ export const productUrls = {
     customerAnalyticsJourneys: (): string => '/customer_analytics/journeys',
     customerAnalyticsConfiguration: (): string => '/customer_analytics/configuration',
     customerJourneyBuilder: (): string => '/customer_analytics/journeys/new',
+    customerJourneyTemplates: (): string => '/customer_analytics/journeys/templates',
     dashboards: (): string => '/dashboard',
     dashboard: (id: string | number, highlightInsightId?: string): string =>
         combineUrl(`/dashboard/${id}`, highlightInsightId ? { highlightInsightId } : {}).url,
@@ -877,7 +878,6 @@ export const productUrls = {
     workflowsLibraryTemplate: (id?: string): string => `/workflows/library/templates/${id}`,
     workflowsLibraryTemplateNew: (): string => '/workflows/library/templates/new',
     workflowsLibraryTemplateFromMessage: (id?: string): string => `/workflows/library/templates/new?messageId=${id}`,
-    customerJourneyTemplates: (): string => '/customer_analytics/journeys/templates',
 }
 
 /** This const is auto-generated, as is the whole file */
