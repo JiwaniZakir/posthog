@@ -1,6 +1,5 @@
 import './Dashboard.scss'
 
-import clsx from 'clsx'
 import { BindLogic, useActions, useMountedLogic, useValues } from 'kea'
 
 import { IconThumbsDown, IconThumbsUp } from '@posthog/icons'
@@ -11,19 +10,18 @@ import { NotFound } from 'lib/components/NotFound'
 import { useFileSystemLogView } from 'lib/hooks/useFileSystemLogView'
 import { useOnMountEffect } from 'lib/hooks/useOnMountEffect'
 import { cn } from 'lib/utils/css-classes'
-import { DashboardEditBar } from 'scenes/dashboard/DashboardEditBar'
+import { DashboardEventSource } from 'lib/utils/eventUsageLogic'
+import { DashboardFilterBar } from 'scenes/dashboard/DashboardFilters'
 import { DashboardItems } from 'scenes/dashboard/DashboardItems'
 import { DashboardLogicProps, dashboardLogic } from 'scenes/dashboard/dashboardLogic'
-import { DashboardReloadAction, LastRefreshText } from 'scenes/dashboard/DashboardReloadAction'
 import { dataThemeLogic } from 'scenes/dataThemeLogic'
 import { InsightErrorState } from 'scenes/insights/EmptyStates'
 import { SceneExport } from 'scenes/sceneTypes'
-import { urls } from 'scenes/urls'
 
 import { SceneContent } from '~/layout/scenes/components/SceneContent'
 import { SceneStickyBar } from '~/layout/scenes/components/SceneStickyBar'
 import { ProductKey } from '~/queries/schema/schema-general'
-import { DashboardMode, DashboardPlacement, DashboardType, DataColorThemeModel, QueryBasedInsightModel } from '~/types'
+import { DashboardPlacement, DashboardType, DataColorThemeModel, QueryBasedInsightModel } from '~/types'
 
 import { teamLogic } from '../teamLogic'
 import { AddInsightToDashboardModal } from './addInsightToDashboardModal/AddInsightToDashboardModal'
@@ -37,10 +35,18 @@ interface DashboardProps {
     dashboard?: DashboardType<QueryBasedInsightModel>
     placement?: DashboardPlacement
     themes?: DataColorThemeModel[]
+    /** When set, the "Edit dashboard" menu item links to the dashboard editor with a back button pointing here. */
+    backTo?: { url: string; name: string }
+}
+
+// Wrapper needed because SceneComponent<DashboardLogicProps> requires the component to accept
+// DashboardLogicProps, but DashboardScene takes { backTo? } (logic props are bound separately).
+function DashboardSceneWrapper(): JSX.Element {
+    return <DashboardScene />
 }
 
 export const scene: SceneExport<DashboardLogicProps> = {
-    component: DashboardScene,
+    component: DashboardSceneWrapper,
     logic: dashboardLogic,
     paramsToProps: ({ params: { id, placement } }) => ({
         id: parseInt(id as string),
@@ -49,17 +55,17 @@ export const scene: SceneExport<DashboardLogicProps> = {
     productKey: ProductKey.PRODUCT_ANALYTICS,
 }
 
-export function Dashboard({ id, dashboard, placement, themes }: DashboardProps): JSX.Element {
+export function Dashboard({ id, dashboard, placement, themes, backTo }: DashboardProps): JSX.Element {
     useMountedLogic(dataThemeLogic({ themes }))
 
     return (
         <BindLogic logic={dashboardLogic} props={{ id: parseInt(id as string), placement, dashboard }}>
-            <DashboardScene />
+            <DashboardScene backTo={backTo} />
         </BindLogic>
     )
 }
 
-function DashboardScene(): JSX.Element {
+function DashboardScene({ backTo }: { backTo?: { url: string; name: string } }): JSX.Element {
     const {
         placement,
         dashboard,
@@ -69,13 +75,22 @@ function DashboardScene(): JSX.Element {
         dashboardMode,
         dashboardFailedToLoad,
         accessDeniedToDashboard,
-        hasVariables,
         refreshAnalysisResult,
         analysisRating,
+        showApplyFiltersBanner,
+        loadingPreview,
+        cancellingPreview,
+        hasUrlFilters,
     } = useValues(dashboardLogic)
     const { currentTeamId } = useValues(teamLogic)
-    const { reportDashboardViewed, abortAnyRunningQuery, setRefreshAnalysisResult, setAnalysisRating } =
-        useActions(dashboardLogic)
+    const {
+        reportDashboardViewed,
+        abortAnyRunningQuery,
+        setRefreshAnalysisResult,
+        setAnalysisRating,
+        applyFilters,
+        setDashboardMode,
+    } = useActions(dashboardLogic)
     const { addInsightToDashboardModalVisible } = useValues(addInsightToDashboardLogic)
 
     useFileSystemLogView({
@@ -147,44 +162,39 @@ function DashboardScene(): JSX.Element {
                         </LemonBanner>
                     )}
 
-                    <SceneStickyBar showBorderBottom={false}>
-                        <div className="flex gap-2 justify-between">
-                            {![
-                                DashboardPlacement.Public,
-                                DashboardPlacement.Export,
-                                DashboardPlacement.FeatureFlag,
-                                DashboardPlacement.Group,
-                                DashboardPlacement.Builtin,
-                            ].includes(placement) &&
-                                dashboard && <DashboardEditBar />}
-                            {[DashboardPlacement.FeatureFlag, DashboardPlacement.Group].includes(placement) &&
-                                dashboard?.id && (
-                                    <LemonButton type="secondary" size="small" to={urls.dashboard(dashboard.id)}>
-                                        {placement === DashboardPlacement.Group
-                                            ? 'Edit dashboard template'
-                                            : 'Edit dashboard'}
-                                    </LemonButton>
-                                )}
-                            {![DashboardPlacement.Export, DashboardPlacement.Builtin].includes(placement) && (
-                                <div
-                                    className={clsx('flex shrink-0 deprecated-space-x-4 dashoard-items-actions', {
-                                        'mt-7': hasVariables,
-                                    })}
-                                >
-                                    <div
-                                        className={`left-item ${
-                                            placement === DashboardPlacement.Public ? 'text-right' : ''
-                                        }`}
+                    {showApplyFiltersBanner && (
+                        <LemonBanner type="info" className="mb-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <span>Filters are not automatically applied on large dashboards.</span>
+                                <div className="flex gap-2 shrink-0">
+                                    <LemonButton
+                                        onClick={() =>
+                                            setDashboardMode(
+                                                hasUrlFilters ? dashboardMode : null,
+                                                DashboardEventSource.DashboardHeaderDiscardChanges
+                                            )
+                                        }
+                                        loading={cancellingPreview}
+                                        type="secondary"
+                                        size="small"
                                     >
-                                        {[DashboardPlacement.Public].includes(placement) ? (
-                                            <LastRefreshText />
-                                        ) : !(dashboardMode === DashboardMode.Edit) ? (
-                                            <DashboardReloadAction />
-                                        ) : null}
-                                    </div>
+                                        Cancel
+                                    </LemonButton>
+                                    <LemonButton
+                                        onClick={applyFilters}
+                                        loading={loadingPreview}
+                                        type="primary"
+                                        size="small"
+                                    >
+                                        Apply filters
+                                    </LemonButton>
                                 </div>
-                            )}
-                        </div>
+                            </div>
+                        </LemonBanner>
+                    )}
+
+                    <SceneStickyBar showBorderBottom={false}>
+                        <DashboardFilterBar backTo={backTo} />
                     </SceneStickyBar>
 
                     <DashboardItems />

@@ -24,12 +24,14 @@ import { AssigneeIconDisplay, AssigneeLabelDisplay, AssigneeSelect } from '../..
 import { ChannelsTag } from '../../components/Channels/ChannelsTag'
 import { ChatView } from '../../components/Chat/ChatView'
 import { SlaDisplay } from '../../components/SlaDisplay'
+import { TicketTags } from '../../components/TicketTags'
 import { type TicketPriority, type TicketStatus, priorityOptions, statusOptionsWithoutAll } from '../../types'
 import { ExceptionsPanel } from './ExceptionsPanel'
 import { PreviousTicketsPanel } from './PreviousTicketsPanel'
 import { RecentEventsPanel } from './RecentEventsPanel'
 import { SessionRecordingPanel } from './SessionRecordingPanel'
 import { supportTicketSceneLogic } from './supportTicketSceneLogic'
+import { TicketActivityPanel } from './TicketActivityPanel'
 
 export const scene: SceneExport<{ ticketId: string }> = {
     component: SupportTicketScene,
@@ -46,6 +48,7 @@ export function SupportTicketScene({ ticketId }: { ticketId: string }): JSX.Elem
         status,
         priority,
         assignee,
+        tags,
         chatMessages,
         messagesLoading,
         messageSending,
@@ -65,6 +68,7 @@ export function SupportTicketScene({ ticketId }: { ticketId: string }): JSX.Elem
         setStatus,
         setPriority,
         setAssignee,
+        setTags,
         sendMessage,
         updateTicket,
         loadOlderMessages,
@@ -159,6 +163,8 @@ export function SupportTicketScene({ ticketId }: { ticketId: string }): JSX.Elem
                         onDraftChange={setDraftContent}
                         isPrivate={draftIsPrivate}
                         onPrivateChange={setDraftIsPrivate}
+                        minHeight="min(400px, calc(100svh - 320px))"
+                        maxHeight="min(600px, calc(100svh - 320px))"
                         extraActions={
                             aiSuggestionEnabled ? (
                                 <AIConsentPopoverWrapper>
@@ -247,7 +253,7 @@ export function SupportTicketScene({ ticketId }: { ticketId: string }): JSX.Elem
                                 <div className="flex justify-between">
                                     <span className="text-muted-alt">Channel</span>
                                     <span className="capitalize">
-                                        <ChannelsTag channel={ticket.channel_source} />
+                                        <ChannelsTag channel={ticket.channel_source} detail={ticket.channel_detail} />
                                     </span>
                                 </div>
                             )}
@@ -323,6 +329,10 @@ export function SupportTicketScene({ ticketId }: { ticketId: string }): JSX.Elem
                                     <SlaDisplay slaDueAt={ticket.sla_due_at} />
                                 </div>
                             )}
+                            <div className="flex justify-between items-center">
+                                <span className="text-muted-alt">Tags</span>
+                                <TicketTags tags={tags} onChange={setTags} saving={false} />
+                            </div>
                         </div>
                         <div className="mt-3 pt-3 border-t flex justify-end">
                             <LemonButton
@@ -335,6 +345,9 @@ export function SupportTicketScene({ ticketId }: { ticketId: string }): JSX.Elem
                             </LemonButton>
                         </div>
                     </LemonCard>
+
+                    {/* Activity History Panel */}
+                    {ticket?.id && <TicketActivityPanel ticketId={ticket.id} />}
 
                     {ticket?.channel_source === 'widget' && (
                         <>
