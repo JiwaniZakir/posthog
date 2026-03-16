@@ -31514,6 +31514,9 @@
         "SharingConfigurationSettings": {
             "additionalProperties": false,
             "properties": {
+                "allowAutoRefresh": {
+                    "type": "boolean"
+                },
                 "detailed": {
                     "type": "boolean"
                 },
