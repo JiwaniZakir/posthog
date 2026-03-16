@@ -25,7 +25,47 @@ export interface TraceReviewModalLogicProps {
 
 const DEFINITION_PICKER_PAGE_SIZE = 50
 
+function getFirstErrorMessage(value: unknown): string | null {
+    if (typeof value === 'string' && value.trim()) {
+        return value
+    }
+
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const nestedMessage = getFirstErrorMessage(item)
+            if (nestedMessage) {
+                return nestedMessage
+            }
+        }
+        return null
+    }
+
+    if (value && typeof value === 'object') {
+        for (const nestedValue of Object.values(value as Record<string, unknown>)) {
+            const nestedMessage = getFirstErrorMessage(nestedValue)
+            if (nestedMessage) {
+                return nestedMessage
+            }
+        }
+    }
+
+    return null
+}
+
 function parseErrorMessage(error: unknown): string {
+    if (error !== null && typeof error === 'object') {
+        if ('detail' in error && typeof error.detail === 'string' && error.detail.trim()) {
+            return error.detail
+        }
+
+        if ('data' in error) {
+            const nestedMessage = getFirstErrorMessage(error.data)
+            if (nestedMessage) {
+                return nestedMessage
+            }
+        }
+    }
+
     if (error instanceof Error && error.message) {
         return error.message
     }

@@ -273,6 +273,27 @@ class BaseTraceReviewWriteSerializer(serializers.Serializer):
         except (TypeError, ValueError):
             return None
 
+    @staticmethod
+    def _build_score_error_messages(
+        score_payloads: list[dict[str, Any]],
+        score_errors: list[dict[str, str]],
+        definition_lookup: dict[str, ScoreDefinition],
+    ) -> list[str]:
+        messages: list[str] = []
+
+        for index, score_error in enumerate(score_errors):
+            if not score_error:
+                continue
+
+            definition_key = str(score_payloads[index].get("definition_id") or "")
+            definition = definition_lookup.get(definition_key)
+            scorer_name = definition.name if definition is not None else f"Scorer {index + 1}"
+
+            for message in score_error.values():
+                messages.append(f"{scorer_name}: {message}")
+
+        return messages
+
     def _resolve_scores(self, score_payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
         team = cast(Team, self.context["team"])
         score_errors: list[dict[str, str]] = [{} for _ in score_payloads]
@@ -339,7 +360,9 @@ class BaseTraceReviewWriteSerializer(serializers.Serializer):
             )
 
         if any(error for error in score_errors):
-            raise serializers.ValidationError({"scores": score_errors})
+            raise serializers.ValidationError(
+                {"scores": self._build_score_error_messages(score_payloads, score_errors, definition_lookup)}
+            )
 
         return resolved_scores
 

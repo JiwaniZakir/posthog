@@ -503,7 +503,6 @@ function TraceMetadata({
                     {formatLLMCost(trace.totalCost)}
                 </Chip>
             )}
-            {showTraceReview ? <TraceReviewMetadata traceId={trace.id} /> : null}
             {showBillingInfo && typeof billedTotalUsd === 'number' && billedTotalUsd > 0 && (
                 <Chip title="Billed total" icon={<span className="text-base">💰</span>}>
                     billed: {formatLLMCost(billedTotalUsd)}
@@ -525,15 +524,20 @@ function TraceMetadata({
             {feedbackEvents.map((feedback) => (
                 <FeedbackTag key={feedback.id} properties={feedback.properties} />
             ))}
-            {sentimentResult && !sentimentLoading && (
-                <Chip title="Sentiment">
-                    <SentimentBar
-                        label={sentimentResult.label ?? 'neutral'}
-                        score={sentimentResult.score ?? 0}
-                        messages={sentimentResult.messages}
-                    />
-                </Chip>
-            )}
+            {(sentimentResult && !sentimentLoading) || showTraceReview ? (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    {sentimentResult && !sentimentLoading ? (
+                        <Chip title="Sentiment">
+                            <SentimentBar
+                                label={sentimentResult.label ?? 'neutral'}
+                                score={sentimentResult.score ?? 0}
+                                messages={sentimentResult.messages}
+                            />
+                        </Chip>
+                    ) : null}
+                    {showTraceReview ? <TraceReviewMetadata traceId={trace.id} /> : null}
+                </div>
+            ) : null}
         </header>
     )
 }

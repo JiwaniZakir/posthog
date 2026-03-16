@@ -2,6 +2,11 @@ import { MOCK_DEFAULT_TEAM } from '~/lib/api.mock'
 
 import { expectLogic } from 'kea-test-utils'
 
+jest.mock('lib/lemon-ui/LemonToast/LemonToast', () => ({
+    lemonToast: { success: jest.fn(), error: jest.fn(), info: jest.fn() },
+}))
+
+import { lemonToast } from 'lib/lemon-ui/LemonToast/LemonToast'
 import { initKeaTests } from '~/test/init'
 
 import { llmAnalyticsScoreDefinitionsList } from '../generated/api'
@@ -96,6 +101,9 @@ describe('traceReviewModalLogic', () => {
         initKeaTests()
         traceReviewsLazyLoaderLogic.mount()
         jest.resetAllMocks()
+        ;(lemonToast.success as jest.Mock).mockClear()
+        ;(lemonToast.error as jest.Mock).mockClear()
+        ;(lemonToast.info as jest.Mock).mockClear()
     })
 
     it('keeps the modal in loading state until the review and scorers finish loading', async () => {
@@ -273,5 +281,38 @@ describe('traceReviewModalLogic', () => {
             limit: 50,
         })
         expect(logic.values.loadedDefinitions).toEqual([booleanDefinition, numericDefinition])
+    })
+
+    it('shows the first nested API validation error when saving fails', async () => {
+        mockTraceReviewsApi.getByTraceId.mockResolvedValue(null)
+        mockLlmAnalyticsScoreDefinitionsList.mockResolvedValue({
+            results: [numericDefinition],
+            count: 1,
+            next: null,
+            previous: null,
+        })
+        mockTraceReviewsApi.save.mockRejectedValue({
+            data: {
+                scores: ['Accuracy: Ensure this value is less than or equal to 10.'],
+            },
+        })
+
+        const logic = traceReviewModalLogic({ traceId: 'trace_1' })
+        logic.mount()
+
+        await expectLogic(logic, () => {
+            logic.actions.openModal()
+        }).toFinishAllListeners()
+
+        logic.actions.selectDefinition(numericDefinition)
+        logic.actions.setScoreValue(numericDefinition.id, '11')
+
+        await expectLogic(logic, () => {
+            logic.actions.saveCurrentReview()
+        }).toFinishAllListeners()
+
+        expect(lemonToast.error).toHaveBeenCalledWith(
+            'Failed to save trace review. Accuracy: Ensure this value is less than or equal to 10.'
+        )
     })
 })

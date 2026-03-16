@@ -192,41 +192,41 @@ class TestTraceReviewsApi(APIBaseTest):
                     "trace_id": "trace_invalid",
                     "scores": [{"definition_id": "4dddeebb-3b21-4c15-8ad2-2024a3111111", "boolean_value": True}],
                 },
-                "definition_id",
+                "Scorer 1: Unknown scorer definition.",
             ),
             (
                 "duplicate_definition",
                 None,
-                "definition_id",
+                "Quality: Each scorer can only appear once per review.",
             ),
             (
                 "categorical_invalid_option",
                 None,
-                "categorical_values",
+                "Quality: Select valid categorical option keys.",
             ),
             (
                 "categorical_single_rejects_multiple_values",
                 None,
-                "categorical_values",
+                "Quality: This scorer allows exactly one categorical option.",
             ),
             (
                 "categorical_multiple_rejects_too_many_values",
                 None,
-                "categorical_values",
+                "Themes: Select no more than 2 categorical options.",
             ),
             (
                 "numeric_out_of_range",
                 None,
-                "numeric_value",
+                "Confidence: Ensure this value is less than or equal to 5.",
             ),
             (
                 "version_from_another_definition",
                 None,
-                "definition_version_id",
+                "Quality: This scorer version does not belong to the scorer.",
             ),
         ]
     )
-    def test_score_validation(self, name: str, payload: dict | None, field: str):
+    def test_score_validation(self, name: str, payload: dict | None, expected_detail: str):
         quality = self._create_definition()
         themes = self._create_multi_select_definition(maximum_selections=2)
         confidence = self._create_definition(
@@ -291,7 +291,7 @@ class TestTraceReviewsApi(APIBaseTest):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data["type"], "validation_error")
         self.assertEqual(response.data["attr"], "scores")
-        self.assertIn(field, str(response.data["detail"]))
+        self.assertEqual(response.data["detail"], expected_detail)
 
     def test_duplicate_active_review_is_rejected(self):
         self._create_review(trace_id="trace_123")
