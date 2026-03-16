@@ -24,7 +24,7 @@ export function DashboardZoomControl({ layoutZoom, setLayoutZoom }: DashboardZoo
     }
 
     return (
-        <div className="flex items-center gap-2 text-sm text-muted hidden md:flex">
+        <div className="hidden md:block">
             <AppShortcut
                 name="DashboardLayoutZoomToggle"
                 keybind={[['z']]}

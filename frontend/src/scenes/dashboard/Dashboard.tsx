@@ -96,7 +96,6 @@ function DashboardScene({ backTo }: { backTo?: { url: string; name: string } }):
         setLayoutZoom,
         autoLayoutTiles,
     } = useActions(dashboardLogic)
-    const { reportDashboardAutoLayoutChanged } = useActions(eventUsageLogic)
     const { addInsightToDashboardModalVisible } = useValues(addInsightToDashboardLogic)
 
     useFileSystemLogView({
@@ -199,60 +198,115 @@ function DashboardScene({ backTo }: { backTo?: { url: string; name: string } }):
                         </LemonBanner>
                     )}
 
-                    <SceneStickyBar showBorderBottom={false} className="flex">
-                        <DashboardFilterBar backTo={backTo} />
-                        {dashboardMode === DashboardMode.Edit &&
-                            canEditDashboard &&
-                            [
-                                DashboardPlacement.Dashboard,
-                                DashboardPlacement.ProjectHomepage,
-                                DashboardPlacement.Builtin,
-                            ].includes(placement) && (
-                                <DashboardZoomControl layoutZoom={layoutZoom} setLayoutZoom={setLayoutZoom} />
-                            )}
-                        {dashboardMode === DashboardMode.Edit && (
-                            <LemonMenu
-                                items={[
-                                    {
-                                        label: '1 column',
-                                        'data-attr': 'dashboard-auto-layout-1-col',
-                                        onClick: () => {
-                                            autoLayoutTiles(1)
-                                            reportDashboardAutoLayoutChanged(dashboard?.id, 1)
-                                        },
-                                    },
-                                    {
-                                        label: '2 columns',
-                                        'data-attr': 'dashboard-auto-layout-2-col',
-                                        onClick: () => {
-                                            autoLayoutTiles(2)
-                                            reportDashboardAutoLayoutChanged(dashboard?.id, 2)
-                                        },
-                                    },
-                                ]}
-                                placement="bottom-end"
-                                fallbackPlacements={['bottom-start', 'bottom']}
-                            >
-                                <LemonButton
-                                    size="small"
-                                    type="secondary"
-                                    data-attr="dashboard-auto-layout-button"
-                                    disabled={currentLayoutSize === 'xs'}
-                                    tooltip={
-                                        currentLayoutSize === 'xs'
-                                            ? 'Layout editing is disabled on smaller screens.'
-                                            : undefined
-                                    }
-                                >
-                                    Auto layout
-                                </LemonButton>
-                            </LemonMenu>
+                    <SceneStickyBar
+                        showBorderBottom={false}
+                        className={cn(
+                            'flex items-center justify-between gap-2',
+                            currentLayoutSize === 'xs' && 'flex-col items-stretch'
                         )}
+                    >
+                        <DashboardFilterBar backTo={backTo} />
+                        <DashboardLayoutOptions
+                            dashboard={dashboard ?? undefined}
+                            placement={placement}
+                            canEditDashboard={canEditDashboard}
+                            dashboardMode={dashboardMode}
+                            layoutZoom={layoutZoom}
+                            setLayoutZoom={setLayoutZoom}
+                            currentLayoutSize={currentLayoutSize}
+                            autoLayoutTiles={autoLayoutTiles}
+                        />
                     </SceneStickyBar>
 
                     <DashboardItems />
                 </div>
             )}
         </SceneContent>
+    )
+}
+
+function DashboardLayoutOptions({
+    dashboard,
+    placement,
+    canEditDashboard,
+    dashboardMode,
+    layoutZoom,
+    setLayoutZoom,
+    currentLayoutSize,
+    autoLayoutTiles,
+}: {
+    dashboard?: DashboardType<QueryBasedInsightModel>
+    placement?: DashboardPlacement
+    canEditDashboard: boolean
+    dashboardMode: DashboardMode | null
+    layoutZoom: number
+    setLayoutZoom: (zoom: number) => void
+    currentLayoutSize: string
+    autoLayoutTiles: (columns: 1 | 2) => void
+}): JSX.Element | null {
+    if (dashboardMode !== DashboardMode.Edit) {
+        return null
+    }
+
+    return (
+        <div className="hidden md:flex items-center gap-2 h-[61px]">
+            {canEditDashboard &&
+                [DashboardPlacement.Dashboard, DashboardPlacement.ProjectHomepage, DashboardPlacement.Builtin].includes(
+                    placement as DashboardPlacement
+                ) && <DashboardZoomControl layoutZoom={layoutZoom} setLayoutZoom={setLayoutZoom} />}
+            <DashboardAutoLayoutMenu
+                dashboard={dashboard}
+                currentLayoutSize={currentLayoutSize}
+                autoLayoutTiles={autoLayoutTiles}
+            />
+        </div>
+    )
+}
+
+function DashboardAutoLayoutMenu({
+    dashboard,
+    currentLayoutSize,
+    autoLayoutTiles,
+}: {
+    dashboard?: DashboardType<QueryBasedInsightModel>
+    currentLayoutSize: string
+    autoLayoutTiles: (columns: 1 | 2) => void
+}): JSX.Element {
+    const { reportDashboardAutoLayoutChanged } = useActions(eventUsageLogic)
+
+    return (
+        <LemonMenu
+            items={[
+                {
+                    label: '1 column',
+                    'data-attr': 'dashboard-auto-layout-1-col',
+                    onClick: () => {
+                        autoLayoutTiles(1)
+                        reportDashboardAutoLayoutChanged(dashboard?.id, 1)
+                    },
+                },
+                {
+                    label: '2 columns',
+                    'data-attr': 'dashboard-auto-layout-2-col',
+                    onClick: () => {
+                        autoLayoutTiles(2)
+                        reportDashboardAutoLayoutChanged(dashboard?.id, 2)
+                    },
+                },
+            ]}
+            placement="bottom-end"
+            fallbackPlacements={['bottom-start', 'bottom']}
+        >
+            <LemonButton
+                size="small"
+                type="secondary"
+                data-attr="dashboard-auto-layout-button"
+                disabledReason={
+                    currentLayoutSize === 'xs' ? 'Layout editing is disabled on smaller screens.' : undefined
+                }
+            >
+                Auto layout
+            </LemonButton>
+        </LemonMenu>
     )
 }

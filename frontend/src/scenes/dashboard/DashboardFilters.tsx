@@ -163,7 +163,7 @@ export function DashboardFilterBar({ backTo }: DashboardFilterBarProps): JSX.Ele
     const { placement, dashboard, dashboardMode, hasVariables, dashboardFiltersEnabled } = useValues(dashboardLogic)
 
     return (
-        <div className="flex flex-col gap-2 w-full">
+        <div className="flex flex-col gap-2">
             <div className="flex gap-2 justify-between">
                 <div className="flex flex-col md:flex-row gap-2 justify-between">
                     {![
@@ -179,7 +179,7 @@ export function DashboardFilterBar({ backTo }: DashboardFilterBarProps): JSX.Ele
                 </div>
                 {![DashboardPlacement.Export, DashboardPlacement.Builtin].includes(placement) && (
                     <div
-                        className={clsx('flex shrink-0 gap-4 items-center dashoard-items-actions ml-auto', {
+                        className={clsx('flex shrink-0 gap-4 items-center dashboard-items-actions ml-auto', {
                             'mt-7': hasVariables,
                         })}
                     >
