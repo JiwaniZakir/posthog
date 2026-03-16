@@ -110,11 +110,10 @@ def _compute_flag_dependencies(flags_data: list[dict[str, Any]]) -> dict[str, An
     """
     id_to_flag: dict[int, dict[str, Any]] = {}
     for flag in flags_data:
-        flag_id = flag.get("id")
-        if flag_id is not None:
-            id_to_flag[flag_id] = flag
+        flag_id = flag["id"]
+        id_to_flag[flag_id] = flag
 
-    # Build direct dependency edges, filtering to known flags only
+    # Build direct dependency edges (may reference unknown flag IDs)
     direct_deps: dict[int, set[int]] = {}
     for flag_id in id_to_flag:
         direct_deps[flag_id] = _extract_direct_dependency_ids(id_to_flag[flag_id])

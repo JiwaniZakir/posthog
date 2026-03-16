@@ -777,8 +777,12 @@ impl PrecomputedDependencyGraph {
             })
             .collect();
 
-        let flags_with_missing_deps: HashSet<i32> =
-            ctx.flags_with_missing_deps.iter().copied().collect();
+        let flags_with_missing_deps: HashSet<i32> = ctx
+            .flags_with_missing_deps
+            .iter()
+            .copied()
+            .filter(|id| !filtered_out_flag_ids.contains(id))
+            .collect();
 
         let transitive_deps = ctx.transitive_deps.clone();
 
