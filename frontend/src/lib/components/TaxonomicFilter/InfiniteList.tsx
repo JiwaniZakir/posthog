@@ -232,7 +232,7 @@ interface InfiniteListRowProps {
     trimmedSearchQuery: string
     dataWarehousePopoverFields: DataWarehousePopoverField[] | undefined
     popupAnchorElement: HTMLDivElement | null
-    showSearchHint: boolean
+    showSuggestedFiltersEmptyState: boolean
     taxonomicGroupTypes: TaxonomicFilterGroupType[]
     setIndex: (index: number) => void
     expand: () => void
@@ -295,7 +295,7 @@ const InfiniteListRow = ({
     trimmedSearchQuery,
     dataWarehousePopoverFields,
     popupAnchorElement,
-    showSearchHint,
+    showSuggestedFiltersEmptyState,
     taxonomicGroupTypes,
     setIndex,
     expand,
@@ -306,7 +306,7 @@ const InfiniteListRow = ({
     index: number
     style: CSSProperties
 } & InfiniteListRowProps): JSX.Element | null => {
-    if (showSearchHint && rowIndex === results.length) {
+    if (showSuggestedFiltersEmptyState && rowIndex === results.length) {
         return (
             <div style={style} className="flex flex-col items-center justify-center gap-1 pt-2">
                 <IconSearch className="text-3xl text-tertiary" />
@@ -575,7 +575,7 @@ export function InfiniteList({ popupAnchorElement, definitionPopoverRenderer }: 
     const selectedItemGroup = getItemGroup(selectedItem, taxonomicGroups, group)
     const selectedItemIsRecent = selectedItem ? hasRecentContext(selectedItem) : false
     const recentFiltersGroup = taxonomicGroups.find((g) => g.type === TaxonomicFilterGroupType.RecentFilters)
-    const showSearchHint = isSuggestedFilters && !trimmedSearchQuery && results.length > 0
+    const showSuggestedFiltersEmptyState = isSuggestedFilters && !trimmedSearchQuery && results.length > 0
 
     return (
         <div
@@ -603,10 +603,10 @@ export function InfiniteList({ popupAnchorElement, definitionPopoverRenderer }: 
                                     showNonCapturedEventOption
                                         ? 1
                                         : Math.max(results.length || (isLoading ? 7 : 0), totalListCount || 0) +
-                                          (showSearchHint ? 1 : 0)
+                                          (showSuggestedFiltersEmptyState ? 1 : 0)
                                 }
                                 overscanCount={100}
-                                rowHeight={(i) => (showSearchHint && i === results.length ? 80 : 36)}
+                                rowHeight={(i) => (showSuggestedFiltersEmptyState && i === results.length ? 80 : 36)}
                                 rowComponent={InfiniteListRow}
                                 rowProps={{
                                     results,
@@ -630,7 +630,7 @@ export function InfiniteList({ popupAnchorElement, definitionPopoverRenderer }: 
                                     trimmedSearchQuery,
                                     dataWarehousePopoverFields,
                                     popupAnchorElement,
-                                    showSearchHint,
+                                    showSuggestedFiltersEmptyState,
                                     taxonomicGroupTypes,
                                     setIndex,
                                     expand,
