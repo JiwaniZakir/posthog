@@ -435,7 +435,6 @@ export const dashboardLogic = kea<dashboardLogicType>([
                             return !equal(originalLayouts || {}, updatedLayouts || {})
                         })
 
-
                         if (
                             !filtersChanged &&
                             !variablesChanged &&
@@ -447,7 +446,6 @@ export const dashboardLogic = kea<dashboardLogicType>([
                             actions.resetUrlVariables()
                             return currentDashboard
                         }
-
 
                         breakpoint()
 
