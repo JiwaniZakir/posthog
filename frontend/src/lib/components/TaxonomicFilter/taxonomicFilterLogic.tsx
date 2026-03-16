@@ -426,6 +426,41 @@ export const taxonomicFilterLogic = kea<taxonomicFilterLogicType>([
             ): TaxonomicFilterGroup[] => {
                 const { id: teamId } = currentTeam
                 const { excludedProperties, propertyAllowList } = propertyFilters
+                const recentItemOptions = recentFilters
+                    .filter((f) => f.teamId === currentTeamId && requestedGroupTypes.includes(f.groupType))
+                    .map((f) => ({
+                        ...f.item,
+                        _recentContext: {
+                            sourceGroupType: f.groupType,
+                            sourceGroupName: f.groupName,
+                            teamId: f.teamId,
+                            ...(f.propertyFilter ? { propertyFilter: f.propertyFilter } : {}),
+                        } satisfies RecentItemContext,
+                    }))
+
+                const searchRecentItems = (items: Record<string, any>[], query: string): Record<string, any>[] => {
+                    if (!query) {
+                        return items
+                    }
+                    const lower = query.toLowerCase()
+                    return items.filter((item) => {
+                        const name = item.name || item.label || String(item.id ?? '')
+                        return name.toLowerCase().includes(lower)
+                    })
+                }
+
+                const getRecentItemName = (item: Record<string, any>): string => {
+                    if (hasRecentContext(item) && item._recentContext.propertyFilter) {
+                        return formatPropertyLabel(item._recentContext.propertyFilter, {}, (s) =>
+                            s == null ? '' : String(s)
+                        )
+                    }
+                    return item.name || item.label || String(item.id ?? '')
+                }
+
+                const getRecentItemValue = (item: Record<string, any>): TaxonomicFilterValue =>
+                    item.name ?? item.label ?? item.id ?? null
+
                 const groups: TaxonomicFilterGroup[] = [
                     {
                         name: 'Events',
@@ -1134,10 +1169,10 @@ export const taxonomicFilterLogic = kea<taxonomicFilterLogicType>([
                         categoryLabel: (count: number) => 'Suggested filters' + (count > 0 ? `: ${count}` : ''),
                         type: TaxonomicFilterGroupType.SuggestedFilters,
                         isLocalOnly: true,
-                        options: [],
-                        getName: (item: TaxonomicDefinitionTypes) => ('name' in item ? item.name : '') || '',
-                        getValue: (item: TaxonomicDefinitionTypes): TaxonomicFilterValue =>
-                            'name' in item ? (item.name ?? null) : null,
+                        options: recentItemOptions.slice(0, 3),
+                        localItemsSearch: searchRecentItems,
+                        getName: getRecentItemName,
+                        getValue: getRecentItemValue,
                         getPopoverHeader: () => 'Suggested filters',
                     },
                     {
@@ -1145,37 +1180,10 @@ export const taxonomicFilterLogic = kea<taxonomicFilterLogicType>([
                         searchPlaceholder: 'recent filters',
                         type: TaxonomicFilterGroupType.RecentFilters,
                         isLocalOnly: true,
-                        options: recentFilters
-                            .filter((f) => f.teamId === currentTeamId && requestedGroupTypes.includes(f.groupType))
-                            .map((f) => ({
-                                ...f.item,
-                                _recentContext: {
-                                    sourceGroupType: f.groupType,
-                                    sourceGroupName: f.groupName,
-                                    teamId: f.teamId,
-                                    ...(f.propertyFilter ? { propertyFilter: f.propertyFilter } : {}),
-                                } satisfies RecentItemContext,
-                            })),
-                        localItemsSearch: (items: Record<string, any>[], query: string) => {
-                            if (!query) {
-                                return items
-                            }
-                            const lower = query.toLowerCase()
-                            return items.filter((item) => {
-                                const name = item.name || item.label || String(item.id ?? '')
-                                return name.toLowerCase().includes(lower)
-                            })
-                        },
-                        getName: (item: Record<string, any>) => {
-                            if (hasRecentContext(item) && item._recentContext.propertyFilter) {
-                                return formatPropertyLabel(item._recentContext.propertyFilter, {}, (s) =>
-                                    s == null ? '' : String(s)
-                                )
-                            }
-                            return item.name || item.label || String(item.id ?? '')
-                        },
-                        getValue: (item: Record<string, any>): TaxonomicFilterValue =>
-                            item.name ?? item.label ?? item.id ?? null,
+                        options: recentItemOptions,
+                        localItemsSearch: searchRecentItems,
+                        getName: getRecentItemName,
+                        getValue: getRecentItemValue,
                         getPopoverHeader: () => 'Recent',
                         getTooltip: (item: Record<string, any>) => {
                             if (hasRecentContext(item)) {
@@ -1442,15 +1450,26 @@ export const taxonomicFilterLogic = kea<taxonomicFilterLogicType>([
 
                 const recentGroup = taxonomicGroups.find((g) => g.type === TaxonomicFilterGroupType.RecentFilters)
                 if (recentGroup?.options && recentGroup.localItemsSearch) {
+                    const suggestedGroup = taxonomicGroups.find(
+                        (g) => g.type === TaxonomicFilterGroupType.SuggestedFilters
+                    )
+                    const pinnedRecentValues = new Set(
+                        (suggestedGroup?.options ?? []).map((item) =>
+                            recentGroup.getValue?.(item as Record<string, any>)
+                        )
+                    )
                     const matchingRecents = recentGroup.localItemsSearch(
                         recentGroup.options as Record<string, any>[],
                         searchQuery
                     )
                     for (const item of matchingRecents) {
-                        result.push({
-                            ...item,
-                            group: TaxonomicFilterGroupType.RecentFilters,
-                        } as TopMatchItem)
+                        const value = recentGroup.getValue?.(item)
+                        if (!pinnedRecentValues.has(value)) {
+                            result.push({
+                                ...item,
+                                group: TaxonomicFilterGroupType.RecentFilters,
+                            } as TopMatchItem)
+                        }
                     }
                 }
 

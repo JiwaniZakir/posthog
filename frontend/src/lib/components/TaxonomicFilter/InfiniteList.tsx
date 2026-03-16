@@ -1,14 +1,13 @@
 import '../../lemon-ui/Popover/Popover.scss'
 import './InfiniteList.scss'
 
-import { hide } from '@floating-ui/react'
 import clsx from 'clsx'
 import { BindLogic, useActions, useValues } from 'kea'
 import { CSSProperties, useEffect, useState } from 'react'
 import { List, useListRef } from 'react-window'
 
 import { IconArchive, IconCheck, IconPlus, IconSearch } from '@posthog/icons'
-import { LemonTag } from '@posthog/lemon-ui'
+import { LemonDivider, LemonTag } from '@posthog/lemon-ui'
 
 import { AutoSizer } from 'lib/components/AutoSizer'
 import { ControlledDefinitionPopover } from 'lib/components/DefinitionPopover/DefinitionPopoverContents'
@@ -29,7 +28,6 @@ import {
 import { dayjs } from 'lib/dayjs'
 import { LemonRow } from 'lib/lemon-ui/LemonRow'
 import { LemonSkeleton } from 'lib/lemon-ui/LemonSkeleton'
-import { Popover } from 'lib/lemon-ui/Popover'
 import { Spinner } from 'lib/lemon-ui/Spinner/Spinner'
 import { Tooltip } from 'lib/lemon-ui/Tooltip'
 import { pluralize } from 'lib/utils'
@@ -234,6 +232,8 @@ interface InfiniteListRowProps {
     trimmedSearchQuery: string
     dataWarehousePopoverFields: DataWarehousePopoverField[] | undefined
     popupAnchorElement: HTMLDivElement | null
+    showSearchHint: boolean
+    taxonomicGroupTypes: TaxonomicFilterGroupType[]
     setIndex: (index: number) => void
     expand: () => void
     selectItem: (
@@ -295,6 +295,8 @@ const InfiniteListRow = ({
     trimmedSearchQuery,
     dataWarehousePopoverFields,
     popupAnchorElement,
+    showSearchHint,
+    taxonomicGroupTypes,
     setIndex,
     expand,
     selectItem,
@@ -304,6 +306,16 @@ const InfiniteListRow = ({
     index: number
     style: CSSProperties
 } & InfiniteListRowProps): JSX.Element | null => {
+    if (showSearchHint && rowIndex === results.length) {
+        return (
+            <div style={style} className="flex flex-col items-center justify-center gap-1 pt-2">
+                <IconSearch className="text-3xl text-tertiary" />
+                <span className="text-secondary text-center text-xs">Start searching and we'll suggest filters...</span>
+                <SuggestedFiltersSearchHint taxonomicGroupTypes={taxonomicGroupTypes} />
+            </div>
+        )
+    }
+
     const item = results[rowIndex]
 
     if (isSkeletonItem(item)) {
@@ -382,11 +394,20 @@ const InfiniteListRow = ({
 
     if (item && itemGroup) {
         const isDisabledItem = itemGroup?.getIsDisabled?.(item) ?? false
-        const isCrossGroupItem = group.isLocalOnly && itemGroup.type !== listGroupType
+        const isCrossGroupItem = !!group.isLocalOnly && itemGroup.type !== listGroupType
         const itemHasRecentContext = hasRecentContext(item)
         const recentGroup = itemHasRecentContext
             ? taxonomicGroups.find((g) => g.type === TaxonomicFilterGroupType.RecentFilters)
             : undefined
+
+        const { listGroupType: resolvedListGroupType, itemGroup: resolvedItemGroup } = resolveItemRendering({
+            item,
+            itemGroup,
+            listGroupType,
+            isCrossGroupItem,
+            recentGroup,
+            fallbackGroup: group,
+        })
 
         return (
             <div
@@ -410,13 +431,8 @@ const InfiniteListRow = ({
             >
                 {renderItemContents({
                     item,
-                    listGroupType: isCrossGroupItem
-                        ? itemHasRecentContext && item._recentContext.propertyFilter
-                            ? listGroupType
-                            : itemGroup.type
-                        : listGroupType,
-                    itemGroup:
-                        itemHasRecentContext && item._recentContext.propertyFilter ? (recentGroup ?? group) : itemGroup,
+                    listGroupType: resolvedListGroupType,
+                    itemGroup: resolvedItemGroup,
                     eventNames,
                     isActive,
                 })}
@@ -520,6 +536,7 @@ export function InfiniteList({ popupAnchorElement, definitionPopoverRenderer }: 
         groupType,
         value,
         taxonomicGroups,
+        taxonomicGroupTypes,
         selectedProperties,
         selectedItemMeta,
         dataWarehousePopoverFields,
@@ -558,6 +575,7 @@ export function InfiniteList({ popupAnchorElement, definitionPopoverRenderer }: 
     const selectedItemGroup = getItemGroup(selectedItem, taxonomicGroups, group)
     const selectedItemIsRecent = selectedItem ? hasRecentContext(selectedItem) : false
     const recentFiltersGroup = taxonomicGroups.find((g) => g.type === TaxonomicFilterGroupType.RecentFilters)
+    const showSearchHint = isSuggestedFilters && !trimmedSearchQuery && results.length > 0
 
     return (
         <div
@@ -584,10 +602,11 @@ export function InfiniteList({ popupAnchorElement, definitionPopoverRenderer }: 
                                 rowCount={
                                     showNonCapturedEventOption
                                         ? 1
-                                        : Math.max(results.length || (isLoading ? 7 : 0), totalListCount || 0)
+                                        : Math.max(results.length || (isLoading ? 7 : 0), totalListCount || 0) +
+                                          (showSearchHint ? 1 : 0)
                                 }
                                 overscanCount={100}
-                                rowHeight={36}
+                                rowHeight={(i) => (showSearchHint && i === results.length ? 80 : 36)}
                                 rowComponent={InfiniteListRow}
                                 rowProps={{
                                     results,
@@ -611,6 +630,8 @@ export function InfiniteList({ popupAnchorElement, definitionPopoverRenderer }: 
                                     trimmedSearchQuery,
                                     dataWarehousePopoverFields,
                                     popupAnchorElement,
+                                    showSearchHint,
+                                    taxonomicGroupTypes,
                                     setIndex,
                                     expand,
                                     selectItem,
@@ -628,27 +649,10 @@ export function InfiniteList({ popupAnchorElement, definitionPopoverRenderer }: 
                     }
                 />
             )}
-            {isActiveTab && showPopover && selectedItem && selectedItemIsRecent ? (
-                <Popover
-                    visible={selectedItemInView}
-                    referenceElement={highlightedItemElement}
-                    className="click-outside-block hotkey-block"
-                    overlay={
-                        <div className="definition-popover p-2">
-                            <div className="font-semibold text-xs text-muted mb-1">
-                                {selectedItemGroup.name} &middot; Recent
-                            </div>
-                            <div>{recentFiltersGroup?.getName?.(selectedItem) || selectedItem.name || ''}</div>
-                        </div>
-                    }
-                    placement="right"
-                    fallbackPlacements={['left']}
-                    middleware={[hide()]}
-                />
-            ) : isActiveTab &&
-              selectedItemHasPopover(selectedItem, selectedItemGroup?.type ?? listGroupType, selectedItemGroup) &&
-              showPopover &&
-              selectedItem ? (
+            {isActiveTab &&
+            selectedItemHasPopover(selectedItem, selectedItemGroup?.type ?? listGroupType, selectedItemGroup) &&
+            showPopover &&
+            selectedItem ? (
                 <BindLogic
                     logic={definitionPopoverLogic}
                     props={{
@@ -662,7 +666,29 @@ export function InfiniteList({ popupAnchorElement, definitionPopoverRenderer }: 
                         item={selectedItem}
                         group={selectedItemGroup}
                         highlightedItemElement={highlightedItemElement}
-                        definitionPopoverRenderer={definitionPopoverRenderer}
+                        definitionPopoverRenderer={
+                            selectedItemIsRecent
+                                ? ({ item, group, defaultView }) => {
+                                      const recentRenderer = definitionPopoverRenderer
+                                          ? definitionPopoverRenderer({ item, group, defaultView })
+                                          : defaultView
+                                      const label =
+                                          recentFiltersGroup?.getName?.(selectedItem) || selectedItem.name || ''
+                                      return (
+                                          <>
+                                              <div className="p-3 pb-0">
+                                                  <div className="text-xs font-semibold text-secondary uppercase">
+                                                      Recent filter
+                                                  </div>
+                                                  <div className="text-sm mt-1">{label}</div>
+                                              </div>
+                                              <LemonDivider />
+                                              {recentRenderer}
+                                          </>
+                                      )
+                                  }
+                                : definitionPopoverRenderer
+                        }
                     />
                 </BindLogic>
             ) : null}
@@ -696,6 +722,40 @@ function SuggestedFiltersSearchHint({
               ? `${hints[0]} or ${hints[1]}`
               : `${hints.slice(0, -1).join(', ')}, or ${hints[hints.length - 1]}`
     return <span className="text-center text-secondary italic">Try searching for {joined}</span>
+}
+
+function resolveItemRendering({
+    item,
+    itemGroup,
+    listGroupType,
+    isCrossGroupItem,
+    recentGroup,
+    fallbackGroup,
+}: {
+    item: TaxonomicDefinitionTypes
+    itemGroup: TaxonomicFilterGroup
+    listGroupType: TaxonomicFilterGroupType
+    isCrossGroupItem: boolean
+    recentGroup: TaxonomicFilterGroup | undefined
+    fallbackGroup: TaxonomicFilterGroup
+}): { listGroupType: TaxonomicFilterGroupType; itemGroup: TaxonomicFilterGroup } {
+    const isRecentPropertyFilter = hasRecentContext(item) && item._recentContext.propertyFilter
+
+    if (isRecentPropertyFilter) {
+        return {
+            listGroupType,
+            itemGroup: recentGroup ?? fallbackGroup,
+        }
+    }
+
+    if (isCrossGroupItem) {
+        return {
+            listGroupType: itemGroup.type,
+            itemGroup,
+        }
+    }
+
+    return { listGroupType, itemGroup }
 }
 
 export function getItemGroup(
