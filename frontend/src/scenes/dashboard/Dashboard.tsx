@@ -94,8 +94,9 @@ function DashboardScene({ backTo }: { backTo?: { url: string; name: string } }):
         applyFilters,
         setDashboardMode,
         setLayoutZoom,
-        autoLayoutTiles,
+        autoLayoutTiles: autoLayoutTilesAction,
     } = useActions(dashboardLogic)
+    const autoLayoutTiles = (columns: 1 | 2 | 3): void => autoLayoutTilesAction(columns as 1 | 2)
     const { addInsightToDashboardModalVisible } = useValues(addInsightToDashboardLogic)
 
     useFileSystemLogView({
@@ -242,7 +243,7 @@ function DashboardLayoutOptions({
     layoutZoom: number
     setLayoutZoom: (zoom: number) => void
     currentLayoutSize: string
-    autoLayoutTiles: (columns: 1 | 2) => void
+    autoLayoutTiles: (columns: 1 | 2 | 3) => void
 }): JSX.Element | null {
     if (dashboardMode !== DashboardMode.Edit) {
         return null
@@ -270,9 +271,11 @@ function DashboardAutoLayoutMenu({
 }: {
     dashboard?: DashboardType<QueryBasedInsightModel>
     currentLayoutSize: string
-    autoLayoutTiles: (columns: 1 | 2) => void
+    autoLayoutTiles: (columns: 1 | 2 | 3) => void
 }): JSX.Element {
     const { reportDashboardAutoLayoutChanged } = useActions(eventUsageLogic)
+    const reportAutoLayoutChanged = (dashboardId: number | undefined, columns: 1 | 2 | 3): void =>
+        reportDashboardAutoLayoutChanged(dashboardId, columns as 1 | 2)
 
     return (
         <LemonMenu
@@ -282,7 +285,7 @@ function DashboardAutoLayoutMenu({
                     'data-attr': 'dashboard-auto-layout-1-col',
                     onClick: () => {
                         autoLayoutTiles(1)
-                        reportDashboardAutoLayoutChanged(dashboard?.id, 1)
+                        reportAutoLayoutChanged(dashboard?.id, 1)
                     },
                 },
                 {
@@ -290,7 +293,15 @@ function DashboardAutoLayoutMenu({
                     'data-attr': 'dashboard-auto-layout-2-col',
                     onClick: () => {
                         autoLayoutTiles(2)
-                        reportDashboardAutoLayoutChanged(dashboard?.id, 2)
+                        reportAutoLayoutChanged(dashboard?.id, 2)
+                    },
+                },
+                {
+                    label: '3 columns',
+                    'data-attr': 'dashboard-auto-layout-3-col',
+                    onClick: () => {
+                        autoLayoutTiles(3)
+                        reportAutoLayoutChanged(dashboard?.id, 3)
                     },
                 },
             ]}
