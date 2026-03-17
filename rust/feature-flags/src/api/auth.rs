@@ -108,7 +108,7 @@ pub async fn validate_personal_api_key_with_scopes_for_team(
     // Query for PersonalAPIKey with scope validation
     // The key must:
     // 1. Have an active user
-    // 2. Have either no scopes (full access) OR have feature_flag:read or feature_flag:write scopes
+    // 2. Have feature_flag:read, feature_flag:write, or all-access (*) scopes
     let query = r#"
         SELECT
             pak.id as key_id,
@@ -123,8 +123,7 @@ pub async fn validate_personal_api_key_with_scopes_for_team(
         WHERE pak.secure_value = $1
           AND u.is_active = true
           AND (
-              pak.scopes IS NULL
-              OR pak.scopes = '{*}'
+              pak.scopes = '{*}'
               OR 'feature_flag:read' = ANY(pak.scopes)
               OR 'feature_flag:write' = ANY(pak.scopes)
           )
