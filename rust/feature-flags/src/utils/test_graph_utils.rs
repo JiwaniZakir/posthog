@@ -2906,11 +2906,7 @@ mod precomputed_dependency_graph_tests {
         // flag_d lands in stage 0 alongside flag_c (both have zero in-degree)
         assert_eq!(
             stage_keys(&precomputed.evaluation_stages),
-            vec![
-                vec!["flag_c", "flag_d"],
-                vec!["flag_b"],
-                vec!["flag_a"],
-            ],
+            vec![vec!["flag_c", "flag_d"], vec!["flag_b"], vec!["flag_a"],],
         );
         assert!(precomputed.flags_with_missing_deps.is_empty());
         assert!(!precomputed.has_cycle_errors);
@@ -2939,10 +2935,7 @@ mod precomputed_dependency_graph_tests {
         // flag_a depends on flag_b, so it's stage 1.
         assert_eq!(
             stage_keys(&precomputed.evaluation_stages),
-            vec![
-                vec!["flag_b", "flag_c"],
-                vec!["flag_a"],
-            ],
+            vec![vec!["flag_b", "flag_c"], vec!["flag_a"],],
         );
         assert!(precomputed.flags_with_missing_deps.is_empty());
         assert!(!precomputed.has_cycle_errors);
