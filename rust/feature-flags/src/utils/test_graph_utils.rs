@@ -2884,10 +2884,11 @@ mod precomputed_dependency_graph_tests {
     }
 
     #[test]
-    fn test_equivalence_with_filtered_out_flags() {
-        // flag_a(1) -> flag_b(2) -> flag_c(3), flag_d(4) independent but filtered out
-        // Verifies the fallback path (which includes all flags as nodes) still produces
-        // correct stages when filtered_out_flag_ids is non-empty.
+    fn test_fallback_with_filtered_out_independent_flag() {
+        // flag_a(1) -> flag_b(2) -> flag_c(3), flag_d(4) independent but filtered out.
+        // The fallback path includes ALL flags as nodes (unlike old BFS which only
+        // includes reachable ones), so flag_d appears in stage 0 as an isolated node.
+        // This is safe — filtered-out flags are skipped during evaluation.
         let flags = vec![
             create_flag(1, "flag_a", HashSet::from([2]), true),
             create_flag(2, "flag_b", HashSet::from([3]), true),
@@ -2900,38 +2901,27 @@ mod precomputed_dependency_graph_tests {
             ..Default::default()
         };
 
-        // Old path
-        let old_result = build_dependency_graph(&feature_flags, 1).unwrap();
-        let old_stages = old_result.graph.into_evaluation_stages().unwrap();
-        let old_stage_keys: Vec<Vec<String>> = old_stages
-            .iter()
-            .map(|stage| {
-                let mut keys: Vec<String> = stage.iter().map(|f| f.key.clone()).collect();
-                keys.sort();
-                keys
-            })
-            .collect();
-
-        // New fallback path (no evaluation_metadata)
         let precomputed = PrecomputedDependencyGraph::build(&feature_flags, 1).unwrap();
 
+        // flag_d lands in stage 0 alongside flag_c (both have zero in-degree)
         assert_eq!(
             stage_keys(&precomputed.evaluation_stages),
-            old_stage_keys,
-            "Fallback path with filtered_out_flag_ids should match old path stages"
+            vec![
+                vec!["flag_c", "flag_d"],
+                vec!["flag_b"],
+                vec!["flag_a"],
+            ],
         );
-        assert_eq!(
-            precomputed.flags_with_missing_deps, old_result.flags_with_missing_deps,
-            "Missing deps should match with filtered_out_flag_ids"
-        );
+        assert!(precomputed.flags_with_missing_deps.is_empty());
         assert!(!precomputed.has_cycle_errors);
     }
 
     #[test]
-    fn test_equivalence_filtered_flag_breaks_dependency_chain() {
-        // flag_a(1) -> flag_b(2) -> flag_c(3), flag_b is filtered out
-        // Filtered-out flag_b gets empty deps, so flag_a's dependency on flag_b
-        // is still valid but flag_b's dependency on flag_c is not followed.
+    fn test_fallback_filtered_flag_breaks_dependency_chain() {
+        // flag_a(1) -> flag_b(2) -> flag_c(3), flag_b is filtered out.
+        // Filtered-out flag_b gets empty edges, so it becomes an isolated node
+        // in stage 0 alongside flag_c. flag_a still depends on flag_b, so it
+        // goes to stage 1.
         let flags = vec![
             create_flag(1, "flag_a", HashSet::from([2]), true),
             create_flag(2, "flag_b", HashSet::from([3]), true),
@@ -2943,29 +2933,18 @@ mod precomputed_dependency_graph_tests {
             ..Default::default()
         };
 
-        // Old path
-        let old_result = build_dependency_graph(&feature_flags, 1).unwrap();
-        let old_stages = old_result.graph.into_evaluation_stages().unwrap();
-        let old_stage_keys: Vec<Vec<String>> = old_stages
-            .iter()
-            .map(|stage| {
-                let mut keys: Vec<String> = stage.iter().map(|f| f.key.clone()).collect();
-                keys.sort();
-                keys
-            })
-            .collect();
-
-        // New fallback path
         let precomputed = PrecomputedDependencyGraph::build(&feature_flags, 1).unwrap();
 
+        // flag_b's edges are cleared (filtered), so it and flag_c are both stage 0.
+        // flag_a depends on flag_b, so it's stage 1.
         assert_eq!(
             stage_keys(&precomputed.evaluation_stages),
-            old_stage_keys,
-            "Filtered mid-chain flag should produce same stages in both paths"
+            vec![
+                vec!["flag_b", "flag_c"],
+                vec!["flag_a"],
+            ],
         );
-        assert_eq!(
-            precomputed.flags_with_missing_deps,
-            old_result.flags_with_missing_deps,
-        );
+        assert!(precomputed.flags_with_missing_deps.is_empty());
+        assert!(!precomputed.has_cycle_errors);
     }
 }
