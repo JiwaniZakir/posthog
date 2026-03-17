@@ -2964,7 +2964,8 @@ mod precomputed_dependency_graph_tests {
             "Filtered mid-chain flag should produce same stages in both paths"
         );
         assert_eq!(
-            precomputed.flags_with_missing_deps, old_result.flags_with_missing_deps,
+            precomputed.flags_with_missing_deps,
+            old_result.flags_with_missing_deps,
         );
     }
 }
